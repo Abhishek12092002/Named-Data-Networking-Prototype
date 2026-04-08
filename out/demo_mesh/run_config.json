@@ -1,0 +1,31 @@
+{
+  "topology": "mesh",
+  "nodes": 12,
+  "consumers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "producers": {
+    "/video": 4,
+    "/news": 5,
+    "/iot": 6
+  },
+  "seeds": [
+    11,
+    12,
+    13
+  ],
+  "cache_sizes": [
+    0,
+    8,
+    16,
+    32
+  ],
+  "zipf_alphas": [
+    0.8,
+    1.2
+  ],
+  "failures": []
+}
