@@ -1,0 +1,26 @@
+# Render blueprint. On render.com: New -> Blueprint -> point at this repo,
+# Render reads this file and provisions the service automatically. You can
+# also skip this file entirely and configure a Web Service manually with:
+#   Build Command: pip install -r requirements.txt
+#   Start Command: gunicorn wsgi:app --workers 2 --threads 4 --timeout 120
+services:
+  - type: web
+    name: ndn-sdn-unified-simulator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --workers 2 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: FLASK_DEBUG
+        value: "0"
+      # Web-demo safety caps (see webapp/app.py) -- Render's free plan has
+      # no hard request-timeout as tight as serverless platforms, so the
+      # defaults are generous. Tighten these if you're on a constrained plan.
+      - key: SIM_MAX_NODES
+        value: "40"
+      - key: SIM_MAX_REQUESTS
+        value: "1500"
+      - key: SIM_MAX_COMBOS
+        value: "24"

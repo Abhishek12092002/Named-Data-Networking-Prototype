@@ -1,0 +1,10 @@
+# Optional -- only needed for tests/test_browser_regressions.py, the
+# real-browser regression suite (see README "Incident history" and
+# "Testing" sections). The core test suite (`python -m unittest discover
+# -s tests`) never requires these; that file skips itself automatically
+# when Playwright isn't installed.
+-r requirements.txt
+playwright
+
+# After installing this file, also fetch a browser binary:
+#   python -m playwright install chromium

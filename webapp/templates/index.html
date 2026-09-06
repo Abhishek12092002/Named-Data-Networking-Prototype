@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SimN — Discrete-Event Network Architecture Simulator</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#simulator" class="brand" aria-label="SimN home">
+        <span class="brand-mark">Sim<span class="brand-accent">N</span></span>
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="#simulator" class="nav-link" data-nav="simulator">Simulator</a>
+        <a href="#experiments" class="nav-link" data-nav="experiments">Experiments</a>
+        <a href="#results" class="nav-link" data-nav="results">Results</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <span class="status-pill" id="sim-status" data-state="idle">idle</span>
+      <span class="topbar-meta">
+        {% if result %}{{ result.combos }} config{{ 's' if result.combos != 1 else '' }} &middot; {{ result.elapsed }}s
+        {% else %}event-driven &middot; IP / NDN / SDN{% endif %}
+      </span>
+    </div>
+  </header>
+
+  <div class="hero-strip">
+    <p class="hero-eyebrow">Discrete-Event Network Architecture Simulator</p>
+    <h1 class="hero-title">Compare IP, NDN &amp; SDN-based architectures</h1>
+    <p class="hero-sub">under identical network conditions, workloads and failures.</p>
+  </div>
+
+  <main class="layout" id="simulator">
+    <aside class="panel form-panel">
+      <div class="panel-heading">
+        <span class="panel-step">1</span> Experiment configuration
+      </div>
+      <form id="sim-form" method="POST" action="{{ url_for('run') }}">
+        <section class="field-group">
+          <h2 class="group-title">Topology</h2>
+          <label>Shape
+            <select name="topology">
+              {% for t in topology_choices %}
+                <option value="{{ t }}" {% if form_values.get('topology', defaults.topology) == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="row2">
+            <label>Nodes
+              <input type="number" name="nodes" min="3" max="40" value="{{ form_values.get('nodes', defaults.nodes) }}">
+            </label>
+            <label>Extra edges
+              <input type="number" name="extra_edges" min="0" value="{{ form_values.get('extra_edges', defaults.extra_edges) }}">
+            </label>
+          </div>
+          <label>Consumers
+            <input type="number" name="consumer_count" min="1" value="{{ form_values.get('consumer_count', defaults.consumer_count) }}">
+          </label>
+          <p class="hint">Producers are placed automatically from the prefix map; consumer count controls how many
+            nodes issue traffic.</p>
+        </section>
+
+        <section class="field-group">
+          <h2 class="group-title">Architecture</h2>
+          <div class="check-grid">
+            {% for a in architecture_choices %}
+              <label class="check-inline">
+                <input type="checkbox" name="architectures" value="{{ a }}" class="arch-checkbox" data-arch="{{ a }}"
+                       {% if a in selected_architectures %}checked{% endif %}>
+                {{ architecture_labels[a] }}
+              </label>
+            {% endfor %}
+          </div>
+          <p class="hint">SDN acts as a centralized control plane that can augment IP or NDN forwarding — it is not a
+            replacement for either data plane. Select both sides of a pair (e.g. IP and IP&nbsp;+&nbsp;SDN) to see the
+            comparison panel below.</p>
+        </section>
+
+        <section class="field-group" id="forwarding-group">
+          <h2 class="group-title">Forwarding &amp; routing</h2>
+          <label>Strategy <span class="hint">NDN strategy when not NDN+SDN</span>
+            <select name="forwarding">
+              {% for f in forwarding_choices %}
+                <option value="{{ f }}" {% if form_values.get('forwarding', defaults.forwarding) == f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Sweep strategies (optional, comma list) <span class="hint">overrides the architecture checkboxes</span>
+            <input type="text" name="forwardings" placeholder="e.g. best-route,sdn-centralized" value="{{ form_values.get('forwardings', '') }}">
+          </label>
+          <label class="sdn-only" data-sdn-field>Controller RTT (ms) <span class="hint">*+SDN architectures only</span>
+            <input type="number" step="0.1" name="controller_rtt_ms" value="{{ form_values.get('controller_rtt_ms', defaults.controller_rtt_ms) }}">
+          </label>
+        </section>
+
+        <section class="field-group">
+          <h2 class="group-title">Caching <span class="scope-tag">NDN only</span></h2>
+          <label>Policy
+            <select name="cache_policy">
+              {% for c in cache_policy_choices %}
+                <option value="{{ c }}" {% if form_values.get('cache_policy', defaults.cache_policy) == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Sweep policies (optional, comma list)
+            <input type="text" name="cache_policies" placeholder="e.g. lfu,sdn-coordinated" value="{{ form_values.get('cache_policies', '') }}">
+          </label>
+          <div class="row2">
+            <label>Cache size
+              <input type="number" name="cache_size" min="0" value="{{ form_values.get('cache_size', defaults.cache_size) }}">
+            </label>
+            <label>Sweep sizes
+              <input type="text" name="cache_sizes" placeholder="0,8,16,32" value="{{ form_values.get('cache_sizes', '') }}">
+            </label>
+          </div>
+          <div class="row2">
+            <label class="sdn-only" data-sdn-field>SDN cache top-K <span class="hint">sdn-coordinated</span>
+              <input type="number" name="sdn_cache_top_k" min="0" value="{{ form_values.get('sdn_cache_top_k', defaults.sdn_cache_top_k) }}">
+            </label>
+            <label>Placement
+              <select name="sdn_cache_placement">
+                {% for p in placement_choices %}
+                  <option value="{{ p }}" {% if form_values.get('sdn_cache_placement', defaults.sdn_cache_placement) == p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="field-group">
+          <h2 class="group-title">Workload</h2>
+          <label>Pattern
+            <select name="workload">
+              {% for w in workload_choices %}
+                <option value="{{ w }}" {% if form_values.get('workload', defaults.workload) == w %}selected{% endif %}>{{ w }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="row2">
+            <label>Requests
+              <input type="number" name="requests" min="10" max="1500" value="{{ form_values.get('requests', defaults.requests) }}">
+            </label>
+            <label>Zipf &alpha;
+              <input type="number" step="0.1" name="zipf_alpha" value="{{ form_values.get('zipf_alpha', defaults.zipf_alpha) }}">
+            </label>
+          </div>
+          <div class="row2">
+            <label>Sweep &alpha; values
+              <input type="text" name="zipf_alphas" placeholder="0.8,1.2" value="{{ form_values.get('zipf_alphas', '') }}">
+            </label>
+            <label>Sweep seeds
+              <input type="text" name="seeds" placeholder="1,2,3" value="{{ form_values.get('seeds', '') }}">
+            </label>
+          </div>
+        </section>
+
+        <section class="field-group">
+          <h2 class="group-title">Network profile</h2>
+          <label>Profile <span class="hint">representative, real-world-inspired -- see docs</span>
+            <select name="network_profile" id="network-profile-select">
+              {% for np in network_profile_choices %}
+                <option value="{{ np }}" {% if form_values.get('network_profile', '') == np %}selected{% endif %}>{{ np if np else 'manual (fields below)' }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="row2" id="manual-link-fields">
+            <label>Propagation <span class="hint">ms &middot; ignored if profile set</span>
+              <input type="number" step="0.1" name="link_delay_ms" value="{{ form_values.get('link_delay_ms', defaults.link_delay_ms) }}">
+            </label>
+            <label>Bandwidth <span class="hint">Mbps &middot; ignored if profile set</span>
+              <input type="number" step="0.1" name="bandwidth_mbps" value="{{ form_values.get('bandwidth_mbps', defaults.bandwidth_mbps) }}">
+            </label>
+          </div>
+          <label>Random loss probability <span class="hint">% &middot; independent of link failures below</span>
+            <input type="number" step="0.0001" min="0" max="1" name="loss_probability" value="{{ form_values.get('loss_probability', defaults.loss_probability) }}">
+          </label>
+        </section>
+
+        <section class="field-group">
+          <h2 class="group-title">Failure injection</h2>
+          <label>Edge to fail <span class="hint">"u,v" — must be a real edge</span>
+            <input type="text" name="fail_edge" placeholder="e.g. 0,1" value="{{ form_values.get('fail_edge', '') }}">
+          </label>
+          <div class="row2">
+            <label>Fail at (ms)
+              <input type="number" step="1" name="fail_time_ms" value="{{ form_values.get('fail_time_ms', defaults.fail_time_ms) }}">
+            </label>
+            <label>Recover at (ms)
+              <input type="number" step="1" name="recover_time_ms" value="{{ form_values.get('recover_time_ms', defaults.recover_time_ms) }}">
+            </label>
+          </div>
+          <div class="pipeline-mini" aria-hidden="true">
+            <span>Failure</span><span class="pipeline-arrow">&rarr;</span>
+            <span>Detection</span><span class="pipeline-arrow">&rarr;</span>
+            <span>Route update</span><span class="pipeline-arrow">&rarr;</span>
+            <span>Reconvergence</span><span class="pipeline-arrow">&rarr;</span>
+            <span>Recovery</span>
+          </div>
+        </section>
+
+        <button type="submit" class="run-btn" id="run-btn">Run simulation &rarr;</button>
+        <p class="footnote">Sweeps multiply: cache sizes &times; &alpha; &times; seeds &times; forwarding &times; cache policy &le; 24 combos for the web demo.</p>
+      </form>
+    </aside>
+
+    <section class="main-col">
+      <section class="panel viz-panel">
+        <div class="panel-heading">
+          <span class="panel-step">2</span> Network visualization
+        </div>
+        {% if result %}
+          <div class="topo-card">
+            {{ result.svg | safe }}
+          </div>
+          <div class="legend">
+            <span><i class="shape-swatch shape-square" style="background:#F5A623"></i>producer</span>
+            <span><i class="shape-swatch shape-triangle" style="border-bottom-color:#4FD1C5"></i>consumer</span>
+            <span><i class="shape-swatch shape-circle" style="background:#3A4A6B"></i>relay</span>
+            {% if 'sdn-centralized' in result.meta.forwardings %}
+              <span><i class="shape-swatch shape-hex" style="background:#8B7FE8"></i>SDN controller</span>
+            {% endif %}
+          </div>
+
+          {% if result.trace_architectures and job_id %}
+            <div id="packet-player" class="player" data-job-id="{{ job_id or '' }}"
+                 data-architectures="{{ result.trace_architectures|join(',') }}">
+              <div class="player-heading">
+                <h3>Packet playback</h3>
+                {% if result.trace_architectures|length > 1 %}
+                  <select id="player-arch-select">
+                    {% for a in result.trace_architectures %}
+                      <option value="{{ a }}">{{ architecture_labels.get(a, a) }}</option>
+                    {% endfor %}
+                  </select>
+                {% endif %}
+                <span class="hint">a real, captured trace from this run — not decorative</span>
+              </div>
+              <div class="player-body">
+                <canvas id="player-canvas" width="560" height="420"></canvas>
+                <div class="player-side">
+                  <div class="player-inspector" id="player-inspector">
+                    <p class="empty-body small">Click a node or an in-flight packet to inspect it. Click an event
+                      in the log to jump to that moment.</p>
+                  </div>
+                  <div class="player-legend">
+                    <span><i class="pkt-swatch" style="background:#F5A623"></i>IP packet</span>
+                    <span><i class="pkt-swatch" style="background:#4FD1C5"></i>Interest</span>
+                    <span><i class="pkt-swatch" style="background:#8B7FE8"></i>Data</span>
+                    <span><i class="pkt-swatch" style="background:#E15554"></i>link down</span>
+                  </div>
+                </div>
+              </div>
+              <div class="player-controls">
+                <button type="button" id="player-reset" title="Reset">&#8676;</button>
+                <button type="button" id="player-play" title="Play/Pause">&#9654;</button>
+                <input type="range" id="player-scrub" min="0" max="1000" value="0">
+                <span id="player-time" class="mono-tag">t = 0.0 ms</span>
+                <select id="player-speed">
+                  <option value="0.25">0.25&times;</option>
+                  <option value="0.5">0.5&times;</option>
+                  <option value="1" selected>1&times;</option>
+                  <option value="2">2&times;</option>
+                  <option value="5">5&times;</option>
+                  <option value="10">10&times;</option>
+                </select>
+              </div>
+              <div class="player-log" id="player-log"></div>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="empty-state small">
+            <p class="empty-body">Configure an experiment on the left and run SimN to view the topology here.</p>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="panel results-panel" id="results">
+        <div class="panel-heading">
+          <span class="panel-step">3</span> Results &amp; comparison
+        </div>
+
+        {% if error %}
+          <div class="error-box">
+            <strong>Simulation error.</strong> {{ error }}
+            <div class="error-hint">Your configuration was preserved on the left — adjust and re-run.</div>
+          </div>
+        {% endif %}
+
+        {% if not result and not error %}
+          <div class="empty-state">
+            <p class="empty-title">No simulation results available.</p>
+            <p class="empty-body">Configure an experiment and run SimN to view results — a topology diagram, a
+              metrics table, comparison and visual analytics will render here.</p>
+          </div>
+        {% endif %}
+
+        {% if result %}
+          <div class="result-meta">
+            <span class="badge">{{ result.combos }} config{{ 's' if result.combos != 1 else '' }}</span>
+            <span class="badge">{{ result.elapsed }}s elapsed</span>
+            <span class="badge">{{ result.meta.nodes }} nodes</span>
+            <span class="badge">{{ result.meta.consumers|length }} consumers</span>
+            <span class="badge">{{ result.meta.producers|length }} producers</span>
+          </div>
+
+          {% if result.highlights %}
+            <div class="highlight-strip">
+              {% if result.highlights.latency %}
+                <div class="highlight-card">
+                  <span class="highlight-label">Lowest observed latency</span>
+                  <span class="highlight-value">{{ result.highlights.latency.value }}</span>
+                  <span class="highlight-arch">{{ result.highlights.latency.label }}</span>
+                </div>
+              {% endif %}
+              {% if result.highlights.cache %}
+                <div class="highlight-card">
+                  <span class="highlight-label">Highest cache hit ratio</span>
+                  <span class="highlight-value">{{ result.highlights.cache.value }}</span>
+                  <span class="highlight-arch">{{ result.highlights.cache.label }}</span>
+                </div>
+              {% endif %}
+              {% if result.highlights.control_overhead %}
+                <div class="highlight-card">
+                  <span class="highlight-label">Lowest control overhead</span>
+                  <span class="highlight-value">{{ result.highlights.control_overhead.value }}</span>
+                  <span class="highlight-arch">{{ result.highlights.control_overhead.label }}</span>
+                </div>
+              {% endif %}
+              {% if result.highlights.completion %}
+                <div class="highlight-card">
+                  <span class="highlight-label">Highest delivery ratio</span>
+                  <span class="highlight-value">{{ result.highlights.completion.value }}</span>
+                  <span class="highlight-arch">{{ result.highlights.completion.label }}</span>
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if result.comparison %}
+            <h2 class="section-title">Comparison &middot; effect of SDN control</h2>
+            <p class="metric-note">Each pair holds topology, workload, network profile, failure schedule and seed
+              identical — the only difference is whether an SDN controller manages the control plane.</p>
+            <div class="compare-grid">
+              {% for pair in result.comparison %}
+                <div class="compare-card">
+                  <div class="compare-header">
+                    <span class="compare-side">{{ pair.base_label }}</span>
+                    <span class="compare-arrow">&rarr;</span>
+                    <span class="compare-side sdn">{{ pair.sdn_label }}</span>
+                  </div>
+                  {% if pair.base and pair.sdn %}
+                    <table class="compare-table">
+                      <tr>
+                        <td>Avg latency</td>
+                        <td>{{ '%.3f'|format(pair.base.avg_latency_ms_mean) }} ms</td>
+                        <td>{{ '%.3f'|format(pair.sdn.avg_latency_ms_mean) }} ms</td>
+                        <td class="{{ 'delta-bad' if pair.latency_delta_pct and pair.latency_delta_pct > 0 else 'delta-good' }}">
+                          {% if pair.latency_delta_pct is not none %}{{ '%+.1f'|format(pair.latency_delta_pct) }}%{% endif %}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Control messages</td>
+                        <td>{{ '%.1f'|format(pair.base.control_messages_tx_mean) }}</td>
+                        <td>{{ '%.1f'|format(pair.sdn.control_messages_tx_mean) }}</td>
+                        <td>control-plane cost of centralization</td>
+                      </tr>
+                      <tr>
+                        <td>Avg reconvergence</td>
+                        <td>{{ '%.2f'|format(pair.base.avg_reconvergence_ms_mean) }} ms</td>
+                        <td>{{ '%.2f'|format(pair.sdn.avg_reconvergence_ms_mean) }} ms</td>
+                        <td>{{ pair.sdn.reconvergence_events_mean|round(1) }} events</td>
+                      </tr>
+                      <tr>
+                        <td>Queue drops</td>
+                        <td>{{ '%.1f'|format(pair.base.queue_drops_mean) }}</td>
+                        <td>{{ '%.1f'|format(pair.sdn.queue_drops_mean) }}</td>
+                        <td></td>
+                      </tr>
+                    </table>
+                  {% else %}
+                    <p class="empty-body">Select both <strong>{{ pair.base_label }}</strong> and
+                      <strong>{{ pair.sdn_label }}</strong> in the Architecture panel to compare them.</p>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="metric-glossary">
+              <div><strong>Avg latency</strong> — end-to-end delivery time under the selected workload; lower is faster.</div>
+              <div><strong>Control messages</strong> — additional control-plane traffic the SDN controller generates to install routes.</div>
+              <div><strong>Reconvergence</strong> — time for forwarding state to stabilize again after a topology change.</div>
+              <div><strong>Cache hit ratio</strong> — fraction of NDN content requests served from an in-network cache.</div>
+            </div>
+          {% endif %}
+
+          <h2 class="section-title">Metrics <span class="scope-tag">aggregated across seeds</span></h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {% for c in result.columns %}<th>{{ c }}</th>{% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in result.rows %}
+                  <tr class="{{ 'row-ndn' if row.system == 'ndn' else 'row-ip' }}">
+                    {% for c in result.columns %}<td>{{ row[c] }}</td>{% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if result.plots %}
+            <h2 class="section-title">Visual analytics</h2>
+            <div class="plot-grid">
+              {% for metric, img in result.plots.items() %}
+                <div class="plot-card">
+                  <img src="data:image/png;base64,{{ img }}" alt="{{ metric }}">
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <details class="tech-drawer">
+            <summary>Technical details</summary>
+            <div class="tech-grid">
+              <div>
+                <h3>Configuration</h3>
+                <dl>
+                  <dt>Topology</dt><dd>{{ result.meta.topology }} &middot; {{ result.meta.nodes }} nodes</dd>
+                  <dt>Consumers</dt><dd>{{ result.meta.consumers }}</dd>
+                  <dt>Producers</dt><dd>{{ result.meta.producers }}</dd>
+                  <dt>Seeds</dt><dd>{{ result.meta.seeds }}</dd>
+                  <dt>Forwarding</dt><dd>{{ result.meta.forwardings }}</dd>
+                  <dt>Cache policies</dt><dd>{{ result.meta.cache_policies }}</dd>
+                  <dt>Cache sizes</dt><dd>{{ result.meta.cache_sizes }}</dd>
+                  <dt>Zipf &alpha; values</dt><dd>{{ result.meta.zipf_alphas }}</dd>
+                </dl>
+              </div>
+              <div>
+                <h3>Network &amp; failures</h3>
+                <dl>
+                  <dt>Network profile</dt><dd>{{ form_values.get('network_profile', '') or 'manual' }}</dd>
+                  <dt>Workload</dt><dd>{{ form_values.get('workload', defaults.workload) }}</dd>
+                  <dt>Requests</dt><dd>{{ form_values.get('requests', defaults.requests) }}</dd>
+                  <dt>Failures</dt>
+                  <dd>
+                    {% if result.meta.failures %}
+                      {% for f in result.meta.failures %}{{ f }}{% if not loop.last %}; {% endif %}{% endfor %}
+                    {% else %}none configured{% endif %}
+                  </dd>
+                  <dt>Web-demo caps</dt><dd>&le; {{ result.combos }} config(s) run this call</dd>
+                </dl>
+              </div>
+            </div>
+          </details>
+        {% endif %}
+      </section>
+    </section>
+  </main>
+
+  <section class="panel history-panel" id="experiments">
+    <div class="panel-heading"><span class="panel-step">&middot;</span> Experiments <span class="scope-tag">this session</span></div>
+    <p class="hint" id="history-empty">No experiments run yet this session. Recent runs will appear here after you run a simulation.</p>
+    <div id="history-list" class="history-list" hidden></div>
+  </section>
+
+  {% if result %}
+    <script type="application/json" id="run-summary-data">
+      {{ {
+        'topology': result.meta.topology,
+        'nodes': result.meta.nodes,
+        'architectures': selected_architectures,
+        'combos': result.combos,
+        'elapsed': result.elapsed,
+        'workload': form_values.get('workload', defaults.workload),
+        'network_profile': form_values.get('network_profile', '') or 'manual',
+        'latency': (result.highlights.latency.value if result.highlights and result.highlights.latency else None),
+      } | tojson }}
+    </script>
+  {% endif %}
+
+  <footer class="footer">SimN — runs fully in-process against the ndn_sim event-driven simulator, no data leaves this server.</footer>
+
+  <div id="loading-overlay" class="loading-overlay" hidden>
+    <div class="loading-box">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <p class="loading-text" id="loading-text-line">Running simulation&hellip;</p>
+      <p class="loading-sub">Discrete-event simulation runs on a background thread; this page polls for real
+        progress and never blocks the browser.</p>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='player.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "topology": "line",
+  "nodes": 8,
+  "extra_edges": 6,
+  "consumer_count": 4,
+  "cache_sizes": "0,8,16,32",
+  "cache_policy": "lru",
+  "forwarding": "best-route",
+  "workload": "zipf",
+  "requests": 200,
+  "items_per_prefix": 80,
+  "zipf_alphas": "0.8,1.2",
+  "seeds": "11,12,13",
+  "link_delay_ms": 8.0,
+  "bandwidth_mbps": 25.0,
+  "queue_limit_packets": 64,
+  "interest_lifetime_ms": 250.0,
+  "pit_capacity": 256,
+  "processing_delay_ms": 1.0,
+  "out_dir": "out/demo_mesh"
+}
